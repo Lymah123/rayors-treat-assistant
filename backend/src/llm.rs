@@ -42,7 +42,7 @@ pub async fn extract_intent(
         "model": "gemma3:4b",
         "stream": false,
         "format": "json",
-        "options": { "temperature": 0 },
+        "options": { "temperature": 0, "seed": 42 },
         "messages": [
             { "role": "system", "content": system },
             { "role": "user", "content": question }

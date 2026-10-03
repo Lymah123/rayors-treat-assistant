@@ -60,12 +60,12 @@ mod tests {
 
     #[test]
     fn finds_known_price() {
-        assert_eq!(menu().find("parfait", "500ml").unwrap().price, 6500);
+        assert_eq!(menu().find_all("parfait", "500ml")[0].price, 6500);
     }
 
     #[test]
-    fn unknown_item_is_none() {
-        assert!(menu().find("cake", "8 inch").is_none());
+    fn unknown_item_is_empty() {
+        assert!(menu().find_all("cake", "8 inch").is_empty());
     }
 
     #[test]

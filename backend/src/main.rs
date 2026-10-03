@@ -47,6 +47,23 @@ fn pick<'a>(candidates: Vec<&'a menu::Product>, question: &str) -> Vec<&'a menu:
     }
 }
 
+fn topic_plausible(question: &str, topic: &str) -> bool {
+    let q = question.to_lowercase();
+    let keys: &[&str] = match topic {
+        "delivery" => &[
+            "deliver", "ship", "send", "bring", "rider", "location", "fee",
+        ],
+        "payment" => &["pay", "transfer", "account", "cash", "card"],
+        "notice" => &[
+            "today", "same day", "tomorrow", "notice", "ahead", "advance", "how soon",
+        ],
+        "hours" => &["open", "close", "closing", "hour", "time", "until", "when"],
+        "flavours" => &["flavour", "flavor", "taste", "variety", "kind"],
+        _ => return true,
+    };
+    keys.iter().any(|k| q.contains(k))
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let question = std::env::args().skip(1).collect::<Vec<_>>().join(" ");
@@ -57,7 +74,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let facts: HashMap<String, String> =
         serde_json::from_str(&std::fs::read_to_string("../data/business.json")?)?;
-    let topics: Vec<String> = facts.keys().cloned().collect();
+    let mut topics: Vec<String> = facts.keys().cloned().collect();
+    topics.sort();
 
     let menu = menu::Menu::load("../data/menu.json")?;
     let categories: Vec<String> = menu
@@ -77,6 +95,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut intent = llm::extract_intent(&question, &topics, &categories, &sizes).await?;
     println!("[intent] {:?}", intent);
+
+    intent.topic = intent
+        .topic
+        .take()
+        .filter(|t| t == "price" || topic_plausible(&question, t));
 
     intent.size = intent.size.take().filter(|s| size_mentioned(&question, s));
     println!("[after guard] {:?}", intent);
