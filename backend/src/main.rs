@@ -150,6 +150,30 @@ fn quantities(question: &str) -> Vec<u32> {
     found
 }
 
+fn full_menu(menu: &menu::Menu, categories: &[String]) -> String {
+    let mut lines = vec!["Here's our price list:".to_string()];
+    for c in categories {
+        let items: Vec<String> = menu
+            .by_category(c)
+            .iter()
+            .map(|p| {
+                if p.name.eq_ignore_ascii_case(c) {
+                    format!("{} {}", p.size, naira(p.price))
+                } else {
+                    format!("{} {} {}", p.name, p.size, naira(p.price))
+                }
+            })
+            .collect();
+        let mut ch = c.chars();
+        let title = match ch.next() {
+            Some(f) => f.to_uppercase().collect::<String>() + ch.as_str(),
+            None => String::new(),
+        };
+        lines.push(format!("{}: {}", title, items.join("; ")));
+    }
+    lines.join("\n")
+}
+
 async fn answer(state: &AppState, question: &str) -> Result<String, BoxError> {
     let mut intent =
         llm::extract_intent(question, &state.topics, &state.categories, &state.sizes).await?;
@@ -164,6 +188,19 @@ async fn answer(state: &AppState, question: &str) -> Result<String, BoxError> {
 
     // Every topic whose keywords appear in the message gets answered.
     let q = question.to_lowercase();
+    let wants_menu = [
+        "price list",
+        "pricelist",
+        "menu",
+        "what do you sell",
+        "what do you offer",
+        "all your products",
+        "catalogue",
+        "catalog",
+    ]
+    .iter()
+    .any(|k| q.contains(k));
+
     let mut fact_topics: Vec<&String> = state
         .topics
         .iter()
@@ -229,7 +266,9 @@ async fn answer(state: &AppState, question: &str) -> Result<String, BoxError> {
             }
         }
         (None, _) => {
-            if intent.topic.as_deref() == Some("price") {
+            if wants_menu {
+                parts.push(full_menu(menu, &state.categories));
+            } else if intent.topic.as_deref() == Some("price") {
                 parts.push(FALLBACK.to_string());
             }
         }

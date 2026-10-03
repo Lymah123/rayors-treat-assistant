@@ -7,3 +7,6 @@ do you take cash|bank transfer
 how much is 400ml parfait|₦5,500
 is there a 2 litre parfait|confirm with the owner
 I want parfait for tomorrow, 2 of the big one, and can you deliver to my house?|Which size would you like
+abeg you fit check the price list for me|Here's our price list
+send me your menu|Here's our price list
+what do you sell|Here's our price list
