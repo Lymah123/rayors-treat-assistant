@@ -1,8 +1,58 @@
 mod llm;
 mod menu;
 
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use axum::{
+    Json, Router,
+    extract::State,
+    response::Html,
+    routing::{get, post},
+};
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeSet, HashMap};
+use std::sync::Arc;
+
+type BoxError = Box<dyn std::error::Error + Send + Sync>;
+
+struct AppState {
+    menu: menu::Menu,
+    facts: HashMap<String, String>,
+    topics: Vec<String>,
+    categories: Vec<String>,
+    sizes: Vec<String>,
+}
+
+impl AppState {
+    fn load() -> Result<Self, BoxError> {
+        let facts: HashMap<String, String> =
+            serde_json::from_str(&std::fs::read_to_string("../data/business.json")?)?;
+        let mut topics: Vec<String> = facts.keys().cloned().collect();
+        topics.sort();
+
+        let menu = menu::Menu::load("../data/menu.json").map_err(|e| e.to_string())?;
+        let categories: Vec<String> = menu
+            .products
+            .iter()
+            .map(|p| p.category.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let sizes: Vec<String> = menu
+            .products
+            .iter()
+            .map(|p| p.size.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+
+        Ok(AppState {
+            menu,
+            facts,
+            topics,
+            categories,
+            sizes,
+        })
+    }
+}
 
 fn naira(n: u32) -> String {
     let s = n.to_string();
@@ -49,7 +99,7 @@ fn pick<'a>(candidates: Vec<&'a menu::Product>, question: &str) -> Vec<&'a menu:
 
 fn topic_keywords(topic: &str) -> &'static [&'static str] {
     match topic {
-        "delivery" => &["deliver", "ship", "rider", "location", "fee"],
+        "delivery" => &["deliver", "ship", "rider"],
         "payment" => &["pay", "transfer", "account", "cash", "card"],
         "notice" => &[
             "today", "same day", "tomorrow", "notice", "ahead", "advance",
@@ -64,19 +114,6 @@ fn topic_plausible(question: &str, topic: &str) -> bool {
     let q = question.to_lowercase();
     let kw = topic_keywords(topic);
     kw.is_empty() || kw.iter().any(|k| q.contains(k))
-}
-
-fn infer_topic(question: &str, topics: &[String]) -> Option<String> {
-    let q = question.to_lowercase();
-    let hits: Vec<&String> = topics
-        .iter()
-        .filter(|t| topic_keywords(t).iter().any(|k| q.contains(k)))
-        .collect();
-    if hits.len() == 1 {
-        Some(hits[0].clone())
-    } else {
-        None
-    }
 }
 
 fn quantities(question: &str) -> Vec<u32> {
@@ -113,76 +150,57 @@ fn quantities(question: &str) -> Vec<u32> {
     found
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let question = std::env::args().skip(1).collect::<Vec<_>>().join(" ");
-    if question.is_empty() {
-        eprintln!("usage: cargo run -- \"your question\"");
-        return Ok(());
-    }
+async fn answer(state: &AppState, question: &str) -> Result<String, BoxError> {
+    let mut intent =
+        llm::extract_intent(question, &state.topics, &state.categories, &state.sizes).await?;
+    eprintln!("[intent] {:?}", intent);
 
-    let facts: HashMap<String, String> =
-        serde_json::from_str(&std::fs::read_to_string("../data/business.json")?)?;
-    let mut topics: Vec<String> = facts.keys().cloned().collect();
-    topics.sort();
-
-    let menu = menu::Menu::load("../data/menu.json")?;
-    let categories: Vec<String> = menu
-        .products
-        .iter()
-        .map(|p| p.category.clone())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect();
-    let sizes: Vec<String> = menu
-        .products
-        .iter()
-        .map(|p| p.size.clone())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect();
-
-    let mut intent = llm::extract_intent(&question, &topics, &categories, &sizes).await?;
-    println!("[intent] {:?}", intent);
-
-    intent.size = intent.size.take().filter(|s| size_mentioned(&question, s));
-
+    intent.size = intent.size.take().filter(|s| size_mentioned(question, s));
     intent.topic = intent
         .topic
         .take()
-        .filter(|t| t == "price" || topic_plausible(&question, t));
+        .filter(|t| t == "price" || topic_plausible(question, t));
+    eprintln!("[after guard] {:?}", intent);
 
-    if intent.topic.is_none() && intent.category.is_none() {
-        intent.topic = infer_topic(&question, &topics);
-    }
-
-    println!("[after guard] {:?}", intent);
-
+    // Every topic whose keywords appear in the message gets answered.
+    let q = question.to_lowercase();
+    let mut fact_topics: Vec<&String> = state
+        .topics
+        .iter()
+        .filter(|t| topic_keywords(t).iter().any(|k| q.contains(k)))
+        .collect();
     if let Some(t) = intent.topic.as_deref() {
-        if let Some(answer) = facts.get(t) {
-            println!("{answer}");
-            return Ok(());
+        if let Some(key) = state.topics.iter().find(|x| x.as_str() == t) {
+            if !fact_topics.contains(&key) {
+                fact_topics.push(key);
+            }
         }
     }
 
-    let reply = match (intent.category.as_deref(), intent.size.as_deref()) {
+    let menu = &state.menu;
+    let qty = quantities(question);
+    let mut parts: Vec<String> = Vec::new();
+
+    match (intent.category.as_deref(), intent.size.as_deref()) {
         (Some(c), Some(s)) => {
-            let found = pick(menu.find_all(c, s), &question);
+            let found = pick(menu.find_all(c, s), question);
             match found.len() {
-                0 => FALLBACK.to_string(),
+                0 => parts.push(FALLBACK.to_string()),
                 1 => {
                     let p = found[0];
-                    match quantities(&question).as_slice() {
-                        [] | [1] => format!("{} ({}) is {}.", p.name, p.size, naira(p.price)),
-                        [q] => format!(
+                    match qty.as_slice() {
+                        [] | [1] => {
+                            parts.push(format!("{} ({}) is {}.", p.name, p.size, naira(p.price)))
+                        }
+                        [n] => parts.push(format!(
                             "{} x {} ({}) at {} each is {}.",
-                            q,
+                            n,
                             p.name,
                             p.size,
                             naira(p.price),
-                            naira(p.price * q)
-                        ),
-                        _ => FALLBACK.to_string(),
+                            naira(p.price * n)
+                        )),
+                        _ => parts.push(FALLBACK.to_string()),
                     }
                 }
                 _ => {
@@ -190,26 +208,98 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .iter()
                         .map(|p| format!("{} {} {}", p.name, p.size, naira(p.price)))
                         .collect();
-                    format!("Which one did you mean? {}.", list.join("; "))
+                    parts.push(format!("Which one did you mean? {}.", list.join("; ")));
                 }
             }
         }
         (Some(c), None) => {
             let items = menu.by_category(c);
             if items.is_empty() {
-                FALLBACK.to_string()
+                parts.push(FALLBACK.to_string());
             } else {
                 let list: Vec<String> = items
                     .iter()
                     .map(|p| format!("{} {} {}", p.name, p.size, naira(p.price)))
                     .collect();
-                format!("Here's what we have: {}.", list.join("; "))
+                if qty.is_empty() {
+                    parts.push(format!("Here's what we have: {}.", list.join("; ")));
+                } else {
+                    parts.push(format!("Which size would you like? {}.", list.join("; ")));
+                }
             }
         }
-        _ => FALLBACK.to_string(),
-    };
+        (None, _) => {
+            if intent.topic.as_deref() == Some("price") {
+                parts.push(FALLBACK.to_string());
+            }
+        }
+    }
 
-    println!("{reply}");
+    for t in fact_topics {
+        if let Some(a) = state.facts.get(t) {
+            parts.push(a.clone());
+        }
+    }
+
+    if parts.is_empty() {
+        parts.push(FALLBACK.to_string());
+    }
+    Ok(parts.join("\n\n"))
+}
+
+#[derive(Deserialize)]
+struct ChatReq {
+    message: String,
+}
+
+#[derive(Serialize)]
+struct ChatResp {
+    reply: String,
+}
+
+async fn index() -> Html<&'static str> {
+    Html(include_str!("../static/index.html"))
+}
+
+async fn chat(State(state): State<Arc<AppState>>, Json(req): Json<ChatReq>) -> Json<ChatResp> {
+    let message = req.message.trim();
+    let reply = if message.is_empty() {
+        "Please type your question.".to_string()
+    } else {
+        match answer(&state, message).await {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("[error] {e}");
+                "Sorry, I'm having trouble right now. Please message the owner directly."
+                    .to_string()
+            }
+        }
+    };
+    Json(ChatResp { reply })
+}
+
+#[tokio::main]
+async fn main() -> Result<(), BoxError> {
+    let state = AppState::load()?;
+    let args: Vec<String> = std::env::args().skip(1).collect();
+
+    if args.first().map(String::as_str) == Some("serve") {
+        let app = Router::new()
+            .route("/", get(index))
+            .route("/chat", post(chat))
+            .with_state(Arc::new(state));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await?;
+        println!("Listening on http://127.0.0.1:3000");
+        axum::serve(listener, app).await?;
+        return Ok(());
+    }
+
+    let question = args.join(" ");
+    if question.is_empty() {
+        eprintln!("usage: cargo run -- \"your question\"  |  cargo run -- serve");
+        return Ok(());
+    }
+    println!("{}", answer(&state, &question).await?);
     Ok(())
 }
 

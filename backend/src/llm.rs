@@ -26,7 +26,7 @@ pub async fn extract_intent(
     topics: &[String],
     categories: &[String],
     sizes: &[String],
-) -> Result<Intent, Box<dyn std::error::Error>> {
+) -> Result<Intent, Box<dyn std::error::Error + Send + Sync>> {
     let system = format!(
         "You identify what a customer is asking about. Reply with JSON only, in the form \
          {{\"topic\": string or null, \"category\": string or null, \"size\": string or null}}. \

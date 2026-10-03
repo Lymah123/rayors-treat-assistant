@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rayor's Treat Assistant</title>
+<style>
+  body { margin:0; font-family: system-ui, sans-serif; background:#fce4ec; display:flex; justify-content:center; }
+  #app { width:100%; max-width:480px; height:100vh; display:flex; flex-direction:column; background:#fff7fa; }
+  header { background:#c2185b; color:#fff; padding:14px 16px; font-weight:600; }
+  header small { display:block; font-weight:400; opacity:.85; }
+  #log { flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:8px; }
+  .msg { max-width:80%; padding:8px 12px; border-radius:12px; line-height:1.35; white-space:pre-wrap; }
+  .bot { background:#fff; align-self:flex-start; border:1px solid #f1c6d6; }
+  .me { background:#f8bbd0; align-self:flex-end; }
+  form { display:flex; gap:8px; padding:10px; background:#fff; border-top:1px solid #f1c6d6; }
+  input { flex:1; padding:10px 12px; border:1px solid #e0a9bd; border-radius:20px; font-size:16px; }
+  button { background:#c2185b; color:#fff; border:0; border-radius:20px; padding:0 18px; font-size:16px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>Rayor's Treat<small>Ask about prices, delivery and payment</small></header>
+  <div id="log"></div>
+  <form id="form"><input id="q" placeholder="Type a message" autocomplete="off"><button>Send</button></form>
+</div>
+<script>
+const log = document.getElementById('log');
+function add(text, cls) {
+  const d = document.createElement('div');
+  d.className = 'msg ' + cls;
+  d.textContent = text;
+  log.appendChild(d);
+  log.scrollTop = log.scrollHeight;
+}
+add("Hi! Ask me about our prices, delivery or payment. For anything I'm not sure of, I'll check with the owner.", 'bot');
+document.getElementById('form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const input = document.getElementById('q');
+  const text = input.value.trim();
+  if (!text) return;
+  add(text, 'me');
+  input.value = '';
+  try {
+    const r = await fetch('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text })
+    });
+    const data = await r.json();
+    add(data.reply, 'bot');
+  } catch (err) {
+    add("Sorry, something went wrong. Please try again.", 'bot');
+  }
+});
+</script>
+</body>
+</html>
