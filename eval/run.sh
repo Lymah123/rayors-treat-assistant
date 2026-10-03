@@ -5,7 +5,7 @@ pass=0; total=0
 while IFS='|' read -r q expected; do
   [ -z "$q" ] && continue
   total=$((total+1))
-  out=$(cargo run --quiet -- "$q" 2>/dev/null | tail -n1)
+  out=$(cargo run --quiet -- "$q" 2>/dev/null)
   if [[ "$out" == *"$expected"* ]]; then
     pass=$((pass+1)); echo "PASS  $q"
   else
