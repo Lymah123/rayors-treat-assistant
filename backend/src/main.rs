@@ -47,21 +47,36 @@ fn pick<'a>(candidates: Vec<&'a menu::Product>, question: &str) -> Vec<&'a menu:
     }
 }
 
-fn topic_plausible(question: &str, topic: &str) -> bool {
-    let q = question.to_lowercase();
-    let keys: &[&str] = match topic {
-        "delivery" => &[
-            "deliver", "ship", "send", "bring", "rider", "location", "fee",
-        ],
+fn topic_keywords(topic: &str) -> &'static [&'static str] {
+    match topic {
+        "delivery" => &["deliver", "ship", "rider", "location", "fee"],
         "payment" => &["pay", "transfer", "account", "cash", "card"],
         "notice" => &[
-            "today", "same day", "tomorrow", "notice", "ahead", "advance", "how soon",
+            "today", "same day", "tomorrow", "notice", "ahead", "advance",
         ],
-        "hours" => &["open", "close", "closing", "hour", "time", "until", "when"],
-        "flavours" => &["flavour", "flavor", "taste", "variety", "kind"],
-        _ => return true,
-    };
-    keys.iter().any(|k| q.contains(k))
+        "hours" => &["open", "close", "closing", "hour", "until"],
+        "flavours" => &["flavour", "flavor", "taste", "variety"],
+        _ => &[],
+    }
+}
+
+fn topic_plausible(question: &str, topic: &str) -> bool {
+    let q = question.to_lowercase();
+    let kw = topic_keywords(topic);
+    kw.is_empty() || kw.iter().any(|k| q.contains(k))
+}
+
+fn infer_topic(question: &str, topics: &[String]) -> Option<String> {
+    let q = question.to_lowercase();
+    let hits: Vec<&String> = topics
+        .iter()
+        .filter(|t| topic_keywords(t).iter().any(|k| q.contains(k)))
+        .collect();
+    if hits.len() == 1 {
+        Some(hits[0].clone())
+    } else {
+        None
+    }
 }
 
 #[tokio::main]
@@ -96,12 +111,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut intent = llm::extract_intent(&question, &topics, &categories, &sizes).await?;
     println!("[intent] {:?}", intent);
 
+    intent.size = intent.size.take().filter(|s| size_mentioned(&question, s));
+
     intent.topic = intent
         .topic
         .take()
         .filter(|t| t == "price" || topic_plausible(&question, t));
 
-    intent.size = intent.size.take().filter(|s| size_mentioned(&question, s));
+    if intent.topic.is_none() && intent.category.is_none() {
+        intent.topic = infer_topic(&question, &topics);
+    }
+
     println!("[after guard] {:?}", intent);
 
     if let Some(t) = intent.topic.as_deref() {
