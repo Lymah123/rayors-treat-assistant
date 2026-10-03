@@ -27,14 +27,6 @@ impl Menu {
         self.products.iter().filter(|p| p.category == c).collect()
     }
 
-    pub fn find(&self, category: &str, size: &str) -> Option<&Product> {
-        let c = category.to_lowercase();
-        let s = size.to_lowercase();
-        self.products
-            .iter()
-            .find(|p| p.category == c && p.size.to_lowercase() == s)
-    }
-
     pub fn find_all(&self, category: &str, size: &str) -> Vec<&Product> {
         let c = category.to_lowercase();
         let s = size.to_lowercase();
