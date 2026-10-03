@@ -1,0 +1,15 @@
+# Rust
+target/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Editors
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.dbdata/menu.json

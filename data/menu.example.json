@@ -1,0 +1,60 @@
+{
+  "business": "Example Treats",
+  "order_hours": "9am-5pm",
+  "products": [
+    {
+      "category": "parfait",
+      "name": "Parfait",
+      "size": "250ml",
+      "price": 2500
+    },
+    {
+      "category": "parfait",
+      "name": "Parfait",
+      "size": "330ml",
+      "price": 4500
+    },
+    {
+      "category": "parfait",
+      "name": "Parfait",
+      "size": "400ml",
+      "price": 5500
+    },
+    {
+      "category": "parfait",
+      "name": "Parfait",
+      "size": "500ml",
+      "price": 6500
+    },
+    {
+      "category": "parfait",
+      "name": "Parfait",
+      "size": "550ml",
+      "price": 8500
+    },
+    {
+      "category": "parfait",
+      "name": "Parfait",
+      "size": "1 litre",
+      "price": 12500
+    },
+    {
+      "category": "yoghurt",
+      "name": "Plain yoghurt",
+      "size": "330ml",
+      "price": 3000
+    },
+    {
+      "category": "yoghurt",
+      "name": "Greek yoghurt",
+      "size": "330ml",
+      "price": 4000
+    },
+    {
+      "category": "yoghurt",
+      "name": "Greek yoghurt",
+      "size": "500ml",
+      "price": 6000
+    }
+  ]
+}
