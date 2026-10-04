@@ -12,4 +12,5 @@ target/
 
 # OS
 .DS_Store
-Thumbs.dbdata/menu.json
+Thumbs.db
+data/menu.json
