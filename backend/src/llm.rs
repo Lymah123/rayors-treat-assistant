@@ -41,6 +41,7 @@ pub async fn extract_intent(
     let body = json!({
         "model": "gemma3:4b",
         "stream": false,
+        "keep_alive": "30m",
         "format": "json",
         "options": { "temperature": 0, "seed": 42 },
         "messages": [
